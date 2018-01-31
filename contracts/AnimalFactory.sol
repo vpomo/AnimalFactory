@@ -1,31 +1,24 @@
-pragma solidity ^0.4.0;
+pragma solidity ^0.4.18;
 
 contract AnimalFactory {
     //Events
-    //Рождение
     event GaveBirth(address owner, uint256 animalId, uint256 fatherId, uint256 motherId, string genes);
     event AnimalMated(uint indexed animalIndex, uint value, address indexed fromAddress, address indexed toAddress);
     event AnimalOffered(uint indexed animalIndex, uint minValue, address indexed toAddress);
     event AnimalTransfer(address from, address to, uint256 tokenId);
-    //Ставка сделана
     event AnimalBidEntered(uint indexed animalIndex, uint value, address indexed fromAddress);
-    //Животное купили
     event AnimalBought(uint indexed animalIndex, uint value, address indexed fromAddress, address indexed toAddress);
-    //Больше не продается
     event AnimalNoLongerForSale(uint indexed animalIndex);
     event AnimalNoLongerForMating(uint indexed animalIndex);
-    //Прерывание ставки
     event AnimalBidWithdrawn(uint indexed animalIndex, uint value, address indexed fromAddress);
-    //Животные, предлагаемые для спаривания
     event AnimalOfferedForMating(uint indexed animalIndex, uint minValue, address indexed toAddress);
 
     //Public variable
-    //Разрешение запросов на создание животных
     bool public claimable = true;
     uint256 public totalAnimalCount = 0;
 
     //Private
-    address private owner;
+    address public owner;
 
     struct Animal {
                     string genes;
@@ -72,12 +65,12 @@ contract AnimalFactory {
 
 
     /* Initializes contract with initial supply tokens to the creator of the contract */
-    function AnimalFactory() {
-        owner = msg.sender;
+    function AnimalFactory(address _owner) public {
+        owner = _owner;
     }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    function transferAnimal(address _from, address _to, uint256 _tokenId)  {
+    function transferAnimal(address _from, address _to, uint256 _tokenId) internal {
         ownerTokenCount[_to]++;
         //token id is animal id, key value pair
         animalOwnerIndex[_tokenId] = _to;
@@ -94,7 +87,7 @@ contract AnimalFactory {
 
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    function balanceOf(address _owner) public view returns (uint256 count) {
+    function balanceOf(address _owner) internal view returns (uint256 count) {
         return ownerTokenCount[_owner];
     }
 
@@ -119,39 +112,17 @@ contract AnimalFactory {
         }
     }
 
-    ///One can claim bunny
-    //if a bunny is claimed throw error
-
-    //add pause unpause
-
-    // Safety check to prevent against an unexpected 0x0 default.
-    // require(_to != address(0));
-    // Disallow transfers to this contract to prevent accidental misuse.
-    // The contract should never own any kitties (except very briefly
-    // after a gen0 cat is created and before it goes on auction).
-    // require(_to != address(this));
-    // Disallow transfers to the auction contracts to prevent accidental
-    // misuse. Auction contracts should only take ownership of kitties
-    // through the allow + transferFrom flow.
-    // require(_to != address(saleAuction));
-    // require(_to != address(siringAuction));
-
-    // You can only send your own cat.
-    // require(_owns(msg.sender, _tokenId));
-
     // ###########################################################
-    function claimAnimal()
-    {
+    function claimAnimal() public {
         //check if claimable on ? if on allow
-        if (!claimable) {throw;}
+        require(claimable);
         //when you claim a animal set geneid
         //also check if it is not locked
         createAnimal(0, 0, 1, "0", msg.sender, 1);
     }
 
     // ###########################################################
-    function setNameBio(uint256 _tokenId, string name, string bio)
-    {
+    function setNameBio(uint256 _tokenId, string name, string bio) public {
         Animal storage bunny = animals[_tokenId];
         bunny.name = name;
         bunny.bio = bio;
@@ -159,7 +130,7 @@ contract AnimalFactory {
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     function createAnimal(uint256 _motherId, uint256 _fatherId, uint256 _generation, string _genes,
-                            address _owner, uint16 _eggphase) returns (uint)
+                            address _owner, uint16 _eggphase) internal returns (uint)
     {
         //only admin can create Animal
         //or if it was a mated
@@ -182,7 +153,6 @@ contract AnimalFactory {
         GaveBirth(_owner, newAnimalId, uint256(_animal.fatherId), uint256(_animal.motherId), _animal.genes);
         //add animal to ownership
         animalOwnerIndex[newAnimalId] = _owner;
-        //throw event
         AnimalTransfer(0, _owner, newAnimalId);
         return newAnimalId;
     }
@@ -193,8 +163,8 @@ contract AnimalFactory {
                 uint256 motherId,
                 uint256 fatherId,
                 uint256 generation,
-                uint256 pregnant,
-                uint256 donorId,
+                //uint256 pregnant,
+                //uint256 donorId,
                 string genes,
                 string name,
                 string bio
@@ -210,16 +180,15 @@ contract AnimalFactory {
     }
 
     // ###########################################################
-    function isAvailableforMating(uint256 _tokenId, uint minSalePriceInWei)
-    {
-        if (animalOwnerIndex[_tokenId] != msg.sender) throw;
+    function isAvailableforMating(uint256 _tokenId, uint minSalePriceInWei) public {
+        require(animalOwnerIndex[_tokenId] == msg.sender);
         animalsOfferedForMating[_tokenId] = Offer(true, _tokenId, msg.sender, minSalePriceInWei, 0x0);
         AnimalOfferedForMating(_tokenId, minSalePriceInWei, 0x0);
     }
 
     // ###########################################################
-    function animalNoLongerForMating(uint animalIndex) {
-        if (animalOwnerIndex[animalIndex] != msg.sender) throw;
+    function animalNoLongerForMating(uint animalIndex) public {
+        require(animalOwnerIndex[animalIndex] == msg.sender);
         animalsOfferedForMating[animalIndex] = Offer(false, animalIndex, msg.sender, 0, 0x0);
         AnimalNoLongerForSale(animalIndex);
     }
@@ -228,17 +197,17 @@ contract AnimalFactory {
     ///pay the mater then create new animal set eggphase to 0x0
     //send 10% to company
     // ###########################################################
-    function acceptAnimalMating(uint animalIndex, uint youranimalid) payable {
+    function acceptAnimalMating(uint animalIndex) public payable {
         ///get the materid
-        Offer offer = animalsOfferedForMating[animalIndex];
+        Offer storage offer = animalsOfferedForMating[animalIndex];
 
-        if (!offer.isForSale) throw;
+        require(offer.isForSale);
         // animal not actually for sale
-        if (offer.onlySellTo != 0x0 && offer.onlySellTo != msg.sender) throw;
+        require(offer.onlySellTo == 0x0 && offer.onlySellTo == msg.sender);
         // animal not supposed to be sold to this user
-        if (msg.value < offer.minValue) throw;
+        require(msg.value > offer.minValue);
         // Didn't send enough ETH
-        if (offer.seller != animalOwnerIndex[animalIndex]) throw;
+        require(offer.seller == animalOwnerIndex[animalIndex]);
         // Seller no longer owner of animal
 
         address seller = offer.seller;
@@ -249,36 +218,36 @@ contract AnimalFactory {
     }
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    function animalNoLongerForSale(uint animalIndex) {
-        if (animalOwnerIndex[animalIndex] != msg.sender) throw;
+    function animalNoLongerForSale(uint animalIndex) internal {
+        require(animalOwnerIndex[animalIndex] == msg.sender);
         animalsOfferedForSale[animalIndex] = Offer(false, animalIndex, msg.sender, 0, 0x0);
         AnimalNoLongerForSale(animalIndex);
     }
 
     // ###########################################################
-    function offerAnimalForSale(uint animalIndex, uint minSalePriceInWei) {
-        if (animalOwnerIndex[animalIndex] != msg.sender) throw;
+    function offerAnimalForSale(uint animalIndex, uint minSalePriceInWei) public {
+        require(animalOwnerIndex[animalIndex] == msg.sender);
         animalsOfferedForSale[animalIndex] = Offer(true, animalIndex, msg.sender, minSalePriceInWei, 0x0);
         AnimalOffered(animalIndex, minSalePriceInWei, 0x0);
     }
 
     // ###########################################################
-    function offerAnimalForSaleToAddress(uint animalIndex, uint minSalePriceInWei, address toAddress) {
-        if (animalOwnerIndex[animalIndex] != msg.sender) throw;
+    function offerAnimalForSaleToAddress(uint animalIndex, uint minSalePriceInWei, address toAddress) public {
+        require(animalOwnerIndex[animalIndex] == msg.sender);
         animalsOfferedForSale[animalIndex] = Offer(true, animalIndex, msg.sender, minSalePriceInWei, toAddress);
         AnimalOffered(animalIndex, minSalePriceInWei, toAddress);
     }
 
     // ###########################################################
-    function buyAnimal(uint animalIndex) payable {
-        Offer offer = animalsOfferedForSale[animalIndex];
-        if (!offer.isForSale) throw;
+    function buyAnimal(uint animalIndex) payable public {
+        Offer storage offer = animalsOfferedForSale[animalIndex];
+        require(offer.isForSale);
         // animal not actually for sale
-        if (offer.onlySellTo != 0x0 && offer.onlySellTo != msg.sender) throw;
+        require(offer.onlySellTo == 0x0 && offer.onlySellTo == msg.sender);
         // animal not supposed to be sold to this user
-        if (msg.value < offer.minValue) throw;
+        require(msg.value > offer.minValue);
         // Didn't send enough ETH
-        if (offer.seller != animalOwnerIndex[animalIndex]) throw;
+        require(offer.seller == animalOwnerIndex[animalIndex]);
         // Seller no longer owner of animal
         address seller = offer.seller;
         animalOwnerIndex[animalIndex] = msg.sender;
@@ -293,7 +262,7 @@ contract AnimalFactory {
 
         // Check for the case where there is a bid from the new owner and refund it.
         // Any other bid can stay in place.
-        Bid bid = animalBids[animalIndex];
+        Bid storage bid = animalBids[animalIndex];
         if (bid.bidder == msg.sender) {
             // Kill bid and refund value
             pendingWithdrawals[msg.sender] += bid.value;
@@ -302,7 +271,7 @@ contract AnimalFactory {
     }
 
     // ###########################################################
-    function withdraw() {
+    function withdraw() public {
         uint amount = pendingWithdrawals[msg.sender];
         // Remember to zero the pending refund before
         // sending to prevent re-entrancy attacks
@@ -310,20 +279,13 @@ contract AnimalFactory {
         msg.sender.transfer(amount);
     }
 
-    // if some one bids excess refund balance
-    // uint256 bidExcess = _bidAmount - price;
-
-    // Return the funds. Similar to the previous transfer, this is
-    // not susceptible to a re-entry attack because the auction is
-    // removed before any transfers occur.
-    // msg.sender.transfer(bidExcess);
     // ###########################################################
-    function enterBidForAnimal(uint animalIndex) payable {
-        if (animalOwnerIndex[animalIndex] == 0x0) throw;
-        if (animalOwnerIndex[animalIndex] == msg.sender) throw;
-        if (msg.value == 0) throw;
-        Bid existing = animalBids[animalIndex];
-        if (msg.value <= existing.value) throw;
+    function enterBidForAnimal(uint animalIndex) public payable {
+        require(animalOwnerIndex[animalIndex] != 0x0);
+        require(animalOwnerIndex[animalIndex] != msg.sender);
+        require(msg.value != 0);
+        Bid storage existing = animalBids[animalIndex];
+        require(msg.value >= existing.value);
         if (existing.value > 0) {
             // Refund the failing bid
             pendingWithdrawals[existing.bidder] += existing.value;
@@ -333,12 +295,12 @@ contract AnimalFactory {
     }
 
     // ###########################################################
-    function acceptBidForAnimal(uint animalIndex, uint minPrice) {
-        if (animalOwnerIndex[animalIndex] != msg.sender) throw;
+    function acceptBidForAnimal(uint animalIndex, uint minPrice) public {
+        require(animalOwnerIndex[animalIndex] == msg.sender);
         address seller = msg.sender;
-        Bid bid = animalBids[animalIndex];
-        if (bid.value == 0) throw;
-        if (bid.value < minPrice) throw;
+        Bid storage bid = animalBids[animalIndex];
+        require(bid.value != 0);
+        require(bid.value > minPrice);
 
         animalOwnerIndex[animalIndex] = bid.bidder;
         ownerTokenCount[seller]--;
@@ -354,11 +316,11 @@ contract AnimalFactory {
     }
 
     // ###########################################################
-    function withdrawBidForAnimal(uint animalIndex) {
-        if (animalOwnerIndex[animalIndex] == 0x0) throw;
-        if (animalOwnerIndex[animalIndex] == msg.sender) throw;
-        Bid bid = animalBids[animalIndex];
-        if (bid.bidder != msg.sender) throw;
+    function withdrawBidForAnimal(uint animalIndex) public {
+        require(animalOwnerIndex[animalIndex] != 0x0);
+        require(animalOwnerIndex[animalIndex] != msg.sender);
+        Bid storage bid = animalBids[animalIndex];
+        require(bid.bidder == msg.sender);
         AnimalBidWithdrawn(animalIndex, bid.value, msg.sender);
         uint amount = bid.value;
         animalBids[animalIndex] = Bid(false, animalIndex, 0x0, 0);
@@ -367,19 +329,3 @@ contract AnimalFactory {
     }
 
 }
-
-/**
-* remove function getTotalAnimalsView(). For public variables, getters are not needed.
-*
-These variables were not used anywhere:
-    //string[] private allowners;
-    //string private  name = "SomeName";
-    //string private symbol = "CBN";
-
-    //mapping (uint256 => address) public matingAllowedToAddress;
-    //mapping (uint256 => address) public animalIndexApproved;
-
-Необходим сеттер для claimable.
-В функции  function acceptAnimalMating(uint animalIndex, uint youranimalid) youranimalid не используется.
-*
-*/
